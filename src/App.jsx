@@ -21,11 +21,11 @@ const LOCATIONS = [
   { id:8, name:"Anderson Island",      region:"Anderson Is.",  lat:47.180,  lon:-122.720,  tideStation:"9446484", tempStation:"9446484", currentStation:null,      cwfZone:"PZZ135" },
 ];
 
-const MPH_TO_KT = 0.868976;
+
 const todayStr  = new Date().toISOString().split("T")[0];
 
 const MOCK = {
-  windKt:7.8, gustKt:17.4, windDir:"S", fc:"Rain", temp:52, tempU:"F", waterTempF:49.3,
+  windMph:9.0, gustMph:20.0, windDir:"S", fc:"Rain", temp:52, tempU:"F", waterTempF:49.3,
   waveHt:2.0, wavePd:null, waveText:"Waves around 2 ft or less", waveDetail:null,
   scaAlerts:[],
   tides:[
@@ -45,7 +45,7 @@ function parseMph(str) {
   const m = str.match(/(\d+)(?:\s+to\s+(\d+))?\s*mph/i);
   if (!m) return null;
   const v = m[2] ? (parseInt(m[1])+parseInt(m[2]))/2 : parseInt(m[1]);
-  return Math.round(v * MPH_TO_KT * 10) / 10;
+  return Math.round(v * 10) / 10;
 }
 
 // Parse gusts from NWS detailedForecast text
@@ -54,7 +54,7 @@ function parseGustsFromText(text) {
   if (!text) return null;
   const m = text.match(/gusts?\s+(?:as\s+high\s+as|up\s+to|to)?\s*(\d+)\s*mph/i);
   if (!m) return null;
-  return Math.round(parseInt(m[1]) * MPH_TO_KT * 10) / 10;
+  return Math.round(parseInt(m[1]) * 10) / 10;
 }
 
 // Parse waves from CWF zone section
@@ -113,8 +113,8 @@ function parseWavesFromCWF(sectionText, targetDate, targetHour) {
 }
 
 // Status functions
-function wStatus(kt)   { return kt==null?"unknown":kt<=8?"green":kt<=12?"yellow":kt<=15?"orange":"red"; }
-function gStatus(kt)   { return kt==null?"green":kt<=12?"green":kt<=15?"yellow":"red"; }
+function wStatus(mph)  { return mph==null?"unknown":mph<=4?"green":mph<=8?"yellow":mph<=12?"orange":"red"; }
+function gStatus(mph)  { return mph==null?"green":mph<=18?"green":mph<=22?"yellow":"red"; }
 function wvStatus(ft)  { if(ft==null)return"unknown";if(ft<=1)return"green";if(ft<=2)return"yellow";return"red"; }
 function cStatus(kt)   { return kt==null?"unknown":kt<1?"green":kt<2?"yellow":"red"; }
 function visStatus(d)  {
@@ -238,7 +238,7 @@ export default function LaunchWindow() {
         return new Date(p.startTime) <= target && new Date(p.endTime) > target;
       }) || fhData.properties.periods[0];
 
-      const windKt  = parseMph(hPeriod.windSpeed);
+      const windMph  = parseMph(hPeriod.windSpeed);
       const windDir = hPeriod.windDirection || "—";
       const fc      = hPeriod.shortForecast || "";
       const temp    = hPeriod.temperature;
@@ -246,7 +246,7 @@ export default function LaunchWindow() {
 
       // ── 2b. Regular forecast — parse gusts from detailedForecast text ────────
       // "South wind around 13 mph, with gusts as high as 20 mph."
-      let gustKt = null;
+      let gustMph = null;
       try {
         const fRes = await fetch(fUrl, { headers:{"User-Agent":"LaunchWindow/3.0"} });
         if (fRes.ok) {
@@ -255,7 +255,7 @@ export default function LaunchWindow() {
           const rPeriod = fData.properties.periods.find(function(p){
             return new Date(p.startTime) <= target && new Date(p.endTime) > target;
           }) || fData.properties.periods[0];
-          gustKt = parseGustsFromText(rPeriod.detailedForecast);
+          gustMph = parseGustsFromText(rPeriod.detailedForecast);
         }
       } catch(e) {}
 
@@ -368,11 +368,11 @@ export default function LaunchWindow() {
         src.push({ label:"NOAA Currents Map", url:currMapUrl, metric:"current" });
       }
 
-      const _ws=wStatus(windKt), _gs=gStatus(gustKt), _wvs=wvStatus(waveHt);
+      const _ws=wStatus(windMph), _gs=gStatus(gustMph), _wvs=wvStatus(waveHt);
       const _cs=cStatus(currKt), adv=scaAlerts.length>0?"red":"green", _vis=visStatus(fc);
 
       setCond({
-        windKt, gustKt, windDir, fc, temp, tempU, waterTempF,
+        windMph, gustMph, windDir, fc, temp, tempU, waterTempF,
         waveHt, wavePd, waveDetail, waveRaw,
         scaAlerts, tides, currKt, currAvail,
         ws:_ws, gs:_gs, wvs:_wvs, cs:_cs, adv, vis:_vis,
@@ -497,36 +497,6 @@ export default function LaunchWindow() {
           </div>
         </div>
 
-        {/* LOCATION + DATE STRIP with water temp */}
-        {c&&!loading&&(
-          <div style={{ display:"flex", alignItems:"center", gap:"16px", padding:"10px 16px",
-            background:bgCard, border:"1px solid "+border, borderRadius:"8px", marginBottom:"24px",
-            fontFamily:"'DM Mono',monospace", fontSize:"12px", flexWrap:"wrap" }}>
-            <span style={{ color:text, fontWeight:500 }}>{loc.name}</span>
-            <span style={{ color:textMid }}>·</span>
-            <span style={{ color:textMid }}>
-              {new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}
-            </span>
-            <span style={{ color:textMid }}>·</span>
-            <span style={{ color:textMid }}>{hour<12?hour+":00 AM":hour===12?"12:00 PM":(hour-12)+":00 PM"}</span>
-            {c.temp&&<React.Fragment>
-              <span style={{ color:textMid }}>·</span>
-              <span style={{ color:textMid }}>Air {c.temp}°{c.tempU}</span>
-            </React.Fragment>}
-            {c.waterTempF!=null&&<React.Fragment>
-              <span style={{ color:textMid }}>·</span>
-              <span style={{ color: c.waterTempF < 50 ? SC.red : c.waterTempF < 55 ? SC.orange : SC.yellow }}>
-                Water {c.waterTempF.toFixed(1)}°F
-                {c.waterTempF < 50 ? " — dangerously cold" : c.waterTempF < 55 ? " — very cold" : " — cold"}
-              </span>
-            </React.Fragment>}
-            {c.fc&&<React.Fragment>
-              <span style={{ color:textMid }}>·</span>
-              <span style={{ color:textMid }}>{c.fc}</span>
-            </React.Fragment>}
-          </div>
-        )}
-
         {/* MOCK NOTICE */}
         {c&&c.isMock&&(
           <div style={{ background:dark?"#1e3060":"#eef3f8", border:"1px solid "+border, borderRadius:"6px",
@@ -554,11 +524,26 @@ export default function LaunchWindow() {
                 {loading
                   ? <div style={{ fontSize:"22px", fontWeight:300, color:textMid }}>Fetching conditions…</div>
                   : <React.Fragment>
-                      <div style={{ fontSize:"22px", fontWeight:300, color:text, marginBottom:"3px" }}>
+                      <div style={{ fontSize:"22px", fontWeight:300, color:text, marginBottom:"8px" }}>
                         {allGo?"Conditions look good. Fish on."
                           :v==="red"||v==="orange"?"Not recommended today."
                           :v==="yellow"?"Marginal — paddle with caution."
                           :"Check complete."}
+                      </div>
+                      <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"11px", color:textMid, display:"flex", flexWrap:"wrap", gap:"6px", alignItems:"center", lineHeight:"1.8" }}>
+                        <span style={{ color:text, fontWeight:500 }}>{loc.name}</span>
+                        <span>·</span>
+                        <span>{new Date(date+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"})}</span>
+                        <span>·</span>
+                        <span>{hour<12?hour+":00 AM":hour===12?"12:00 PM":(hour-12)+":00 PM"}</span>
+                        {c.temp&&<React.Fragment><span>·</span><span>Air {c.temp}°{c.tempU}</span></React.Fragment>}
+                        {c.fc&&<React.Fragment><span>·</span><span>{c.fc}</span></React.Fragment>}
+                        {c.waterTempF!=null&&<React.Fragment>
+                          <span>·</span>
+                          <span style={{ color: c.waterTempF < 50 ? SC.red : c.waterTempF < 55 ? SC.orange : SC.yellow }}>
+                            Water {c.waterTempF.toFixed(1)}°F{c.waterTempF < 50 ? " · dangerously cold" : c.waterTempF < 55 ? " · very cold" : " · cold"}
+                          </span>
+                        </React.Fragment>}
                       </div>
                       {c&&c.scaAlerts&&c.scaAlerts.length>0&&(
                         <div style={{ marginTop:"8px", fontFamily:"'DM Mono',monospace", fontSize:"11px",
@@ -594,15 +579,15 @@ export default function LaunchWindow() {
             <SectionLabel text="Conditions" textMid={textMid} />
             <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:"10px", marginBottom:"28px" }}>
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
-                label="Wind" value={c.windKt!=null?c.windKt.toFixed(1):"—"} unit="kt"
+                label="Wind" value={c.windMph!=null?c.windMph.toFixed(0):"—"} unit="mph"
                 sub={c.windDir?"from "+c.windDir:null} status={c.ws}
                 source="NWS hourly JSON · windSpeed field"
-                thresh="0–8: Ideal · 8–12: OK · 12–15: Marginal · 15+: No Go" />
+                thresh="0–4 mph: Ideal · 4–8: OK · 8–12: Marginal · 12+: No Go" />
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
-                label="Gusts" value={c.gustKt!=null?c.gustKt.toFixed(1):"—"} unit="kt"
-                sub={c.gustKt==null?"none forecast in period":null} status={c.gs}
+                label="Gusts" value={c.gustMph!=null?c.gustMph.toFixed(0):"—"} unit="mph"
+                sub={c.gustMph==null?"none forecast in period":null} status={c.gs}
                 source="NWS regular forecast · detailedForecast text (hourly JSON has no gust field)"
-                thresh="≤12: OK · ≤15: Caution · 15+: No Go" />
+                thresh="≤18 mph: OK · ≤22: Caution · 22+: No Go" />
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
                 label="Waves" value={c.waveHt!=null?c.waveHt.toFixed(1):"—"} unit="ft"
                 sub={
@@ -701,13 +686,13 @@ export default function LaunchWindow() {
             <div style={{ background:bgCard, border:"1px solid "+border, borderRadius:"8px", overflow:"hidden" }}>
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={c.ws} verifyKey="wind" verified={verified.wind} onVerify={toggleVerified}
-                label="Wind ≤ 12 kt"
-                detail={c.windKt!=null?c.windKt.toFixed(1)+" kt from "+c.windDir:"data unavailable"}
+                label="Wind ≤ 8 mph"
+                detail={c.windMph!=null?c.windMph.toFixed(0)+" mph from "+c.windDir:"data unavailable"}
                 sourceUrl={c.sourceWind} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={c.gs} verifyKey="gusts" verified={verified.gusts} onVerify={toggleVerified}
-                label="Gusts ≤ 15 kt"
-                detail={c.gustKt!=null?c.gustKt.toFixed(1)+" kt":"none forecast in this period"}
+                label="Gusts ≤ 18 mph"
+                detail={c.gustMph!=null?c.gustMph.toFixed(0)+" mph":"none forecast in this period"}
                 sourceUrl={c.sourceGusts} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={waveSteepOk===false?"red":c.wvs} verifyKey="waves" verified={verified.waves} onVerify={toggleVerified}
