@@ -1,41 +1,62 @@
 import React, { useState, useEffect, useCallback } from "react";
 
+// ─── Locations ────────────────────────────────────────────────────────────────
+// tideStation   : NOAA CO-OPS tide prediction station ID (verified)
+// currentStation: NOAA CO-OPS current prediction station ID (only PUG1515 is verified for Puget Sound)
+//                 null = no reliable API current data; user directed to NOAA map
+// marineZone    : NWS marine forecast zone ID for wave/wind data
 const LOCATIONS = [
-  { id:0, name:"Titlow Beach",         region:"Tacoma",        lat:47.2489, lon:-122.5525, tideStation:"9446484", currentStation:"TAC0101" },
-  { id:1, name:"Owen Beach",           region:"Pt Defiance",   lat:47.2985, lon:-122.5409, tideStation:"9446484", currentStation:"TAC0101" },
-  { id:2, name:"Dash Point",           region:"Federal Way",   lat:47.3087, lon:-122.4078, tideStation:"9446484", currentStation:"TAC0101" },
-  { id:3, name:"Saltwater State Park", region:"Des Moines",    lat:47.3654, lon:-122.3237, tideStation:"9447130", currentStation:"SEA0101" },
-  { id:4, name:"Shilshole Bay",        region:"Seattle",       lat:47.6877, lon:-122.4014, tideStation:"9447130", currentStation:"SEA0101" },
-  { id:5, name:"Edmonds Marina",       region:"Edmonds",       lat:47.8127, lon:-122.3891, tideStation:"9447130", currentStation:"PUG1515" },
-  { id:6, name:"Gig Harbor Ramp",      region:"Gig Harbor",    lat:47.3327, lon:-122.5797, tideStation:"9446484", currentStation:"TAC0101" },
-  { id:7, name:"Joemma Beach",         region:"Key Peninsula", lat:47.2480, lon:-122.7580, tideStation:"9446484", currentStation:"TAC0101" },
-  { id:8, name:"Anderson Island",      region:"Anderson Is.",  lat:47.1560, lon:-122.6860, tideStation:"9446484", currentStation:"TAC0101" },
+  { id:0, name:"Titlow Beach",         region:"Tacoma",        lat:47.2489, lon:-122.5525, tideStation:"9446484", currentStation:"PUG1515",  marineZone:"PZZ132" },
+  { id:1, name:"Owen Beach",           region:"Pt Defiance",   lat:47.2985, lon:-122.5409, tideStation:"9446484", currentStation:"PUG1515",  marineZone:"PZZ132" },
+  { id:2, name:"Dash Point",           region:"Federal Way",   lat:47.3087, lon:-122.4078, tideStation:"9446484", currentStation:null,       marineZone:"PZZ132" },
+  { id:3, name:"Saltwater State Park", region:"Des Moines",    lat:47.3654, lon:-122.3237, tideStation:"9447130", currentStation:null,       marineZone:"PZZ131" },
+  { id:4, name:"Shilshole Bay",        region:"Seattle",       lat:47.6877, lon:-122.4014, tideStation:"9447130", currentStation:null,       marineZone:"PZZ131" },
+  { id:5, name:"Edmonds Marina",       region:"Edmonds",       lat:47.8127, lon:-122.3891, tideStation:"9447130", currentStation:null,       marineZone:"PZZ130" },
+  { id:6, name:"Gig Harbor Ramp",      region:"Gig Harbor",    lat:47.3327, lon:-122.5797, tideStation:"9446484", currentStation:"PUG1515",  marineZone:"PZZ132" },
+  { id:7, name:"Joemma Beach",         region:"Key Peninsula", lat:47.2480, lon:-122.7580, tideStation:"9446484", currentStation:null,       marineZone:"PZZ132" },
+  { id:8, name:"Anderson Island",      region:"Anderson Is.",  lat:47.1560, lon:-122.6860, tideStation:"9446484", currentStation:null,       marineZone:"PZZ132" },
 ];
 
 const MPH_TO_KT = 0.868976;
 const todayStr  = new Date().toISOString().split("T")[0];
 
+// ─── Mock data ────────────────────────────────────────────────────────────────
 const MOCK = {
   windKt:7.2, gustKt:11.4, windDir:"SW", fc:"Partly Cloudy", temp:58, tempU:"F",
-  waveHt:1.5, wavePd:7, scaAlerts:[],
+  waveHt:1.5, wavePd:7, waveSource:"marine", scaAlerts:[],
   tides:[
     {t:"2026-05-04 04:12",v:"-0.4",type:"L"},
     {t:"2026-05-04 10:33",v:"13.8",type:"H"},
     {t:"2026-05-04 16:51",v:"5.2", type:"L"},
     {t:"2026-05-04 22:17",v:"11.1",type:"H"},
   ],
-  currKt:0.6,
+  currKt:0.6, currAvail:true,
   ws:"green", gs:"yellow", wvs:"yellow", cs:"green", adv:"green", vis:"green",
   verdict:"yellow", isMock:true,
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function parseMph(str) {
   if (!str) return null;
   const m = str.match(/(\d+)(?:\s+to\s+(\d+))?\s*mph/i);
   if (!m) return null;
-  const v = m[2] ? (parseInt(m[1]) + parseInt(m[2])) / 2 : parseInt(m[1]);
+  const v = m[2] ? (parseInt(m[1])+parseInt(m[2]))/2 : parseInt(m[1]);
   return Math.round(v * MPH_TO_KT * 10) / 10;
 }
+
+// Parse wave height from NWS marine forecast text
+function parseWaves(text) {
+  if (!text) return { ht: null, pd: null };
+  // "seas 2 to 3 ft" / "waves 1 ft or less" / "combined seas 1 to 2 feet"
+  const htMatch = text.match(/(?:seas?|waves?|combined\s+seas?)\s+(\d+(?:\.\d+)?)\s*(?:to\s+(\d+(?:\.\d+)?)\s*)?(?:ft|feet)/i);
+  let ht = null;
+  if (htMatch) ht = htMatch[2] ? (parseFloat(htMatch[1])+parseFloat(htMatch[2]))/2 : parseFloat(htMatch[1]);
+  // "period of 5 to 7 seconds" / "7 second period"
+  const pdMatch = text.match(/(?:period\s+of\s+)?(\d+)(?:\s+to\s+\d+)?\s*(?:second|sec)/i);
+  const pd = pdMatch ? parseInt(pdMatch[1]) : null;
+  return { ht, pd };
+}
+
 function wStatus(kt)    { return kt==null?"unknown":kt<=8?"green":kt<=12?"yellow":kt<=15?"orange":"red"; }
 function gStatus(kt)    { return kt==null?"green":kt<=12?"green":kt<=15?"yellow":"red"; }
 function wvStatus(ft,p) { if(ft==null)return"unknown";if(ft<=1)return"green";if(ft<=2&&(!p||p>=6))return"yellow";if(ft>=3||(ft>=2&&p<5))return"red";return"yellow"; }
@@ -51,6 +72,7 @@ function overallVerdict(arr) {
   return"unknown";
 }
 
+// ─── Design tokens ────────────────────────────────────────────────────────────
 const NAVY  = "#1a2b4a";
 const NAVY2 = "#243558";
 const WHITE = "#ffffff";
@@ -63,7 +85,6 @@ const SL = { green:"Go", yellow:"Caution", orange:"Marginal", red:"No Go", unkno
 function KayakLogo({ size, color }) {
   return (
     <svg width={size} height={size} viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="40" cy="58" rx="30" ry="7" fill={color} opacity="0.15"/>
       <path d="M10 56 Q25 48 40 48 Q55 48 70 56 Q55 62 40 62 Q25 62 10 56Z" fill={color}/>
       <rect x="33" y="40" width="14" height="12" rx="3" fill={color}/>
       <circle cx="40" cy="34" r="6" fill={color}/>
@@ -77,18 +98,17 @@ function KayakLogo({ size, color }) {
   );
 }
 
+// ─── App ──────────────────────────────────────────────────────────────────────
 export default function LaunchWindow() {
   const [dark,    setDark]    = useState(false);
-  const [locId,   setLocId]   = useState(0);
+  const [locId,   setLocId]   = useState(4); // Default: Shilshole Bay, Seattle
   const [date,    setDate]    = useState(todayStr);
   const [hour,    setHour]    = useState(new Date().getHours());
   const [cond,    setCond]    = useState(null);
   const [loading, setLoading] = useState(false);
   const [sources, setSources] = useState([]);
-
-  // Manual confirms: 3 personal checks + 6 auto-row verifications
   const [manual,  setManual]  = useState({ gear:true, floatPlan:false, shore:false });
-  const [verified, setVerified] = useState({ wind:false, gusts:false, waves:false, current:false, advisories:false, visibility:false });
+  const [verified,setVerified]= useState({ wind:false, gusts:false, waves:false, current:false, advisories:false, visibility:false });
 
   const loc = LOCATIONS[locId];
   const bg      = dark ? NAVY    : WHITE;
@@ -97,7 +117,6 @@ export default function LaunchWindow() {
   const text    = dark ? "#e8edf4" : NAVY;
   const textMid = dark ? "#8faabb" : MUTED;
 
-  // Reset verifications when new data is fetched
   function resetVerified() {
     setVerified({ wind:false, gusts:false, waves:false, current:false, advisories:false, visibility:false });
   }
@@ -129,93 +148,155 @@ export default function LaunchWindow() {
     setLoading(true); setCond(null); setSources([]); resetVerified();
     const src = [];
     try {
+      // ── 1. NWS Hourly Forecast (wind, gusts, temp, visibility) ──────────────
+      const nwsWindUrl = "https://forecast.weather.gov/MapClick.php?lat=" + loc.lat + "&lon=" + loc.lon;
       const ptRes = await fetch(
         "https://api.weather.gov/points/" + loc.lat + "," + loc.lon,
-        { headers:{"User-Agent":"LaunchWindow/3.0"} }
+        { headers:{"User-Agent":"LaunchWindow/3.0 (kayak-safety@puget-sound)"} }
       );
-      if (!ptRes.ok) throw new Error("NWS " + ptRes.status);
+      if (!ptRes.ok) throw new Error("NWS points " + ptRes.status);
       const pt = await ptRes.json();
       const fhUrl = pt.properties.forecastHourly;
-      src.push({ label:"NWS Hourly", url:fhUrl });
+
+      src.push({ label:"NWS Hourly Forecast", url:nwsWindUrl, metric:"wind/gusts/visibility" });
 
       const fRes = await fetch(fhUrl, { headers:{"User-Agent":"LaunchWindow/3.0"} });
-      if (!fRes.ok) throw new Error("Forecast unavailable");
+      if (!fRes.ok) throw new Error("NWS hourly " + fRes.status);
       const fData = await fRes.json();
       const periods = fData.properties.periods;
       const target  = new Date(date + "T" + String(hour).padStart(2,"0") + ":00:00");
-      const period  = periods.find(function(p){ return new Date(p.startTime)<=target&&new Date(p.endTime)>target; }) || periods[0];
+      const period  = periods.find(function(p){ return new Date(p.startTime)<=target && new Date(p.endTime)>target; }) || periods[0];
 
+      // Wind & gusts come from structured JSON fields — reliable
       const windKt  = parseMph(period.windSpeed);
       const gustKt  = period.windGust ? parseMph(period.windGust) : null;
       const windDir = period.windDirection || "—";
       const fc      = period.shortForecast || "";
-      const detail  = period.detailedForecast || "";
       const temp    = period.temperature;
       const tempU   = period.temperatureUnit;
 
-      let waveHt=null, wavePd=null;
-      const wm = detail.match(/waves?\s+(\d+(?:\.\d+)?)\s*(?:to\s+(\d+(?:\.\d+)?)\s*)?(?:ft|feet)/i);
-      if(wm) waveHt = wm[2]?(parseFloat(wm[1])+parseFloat(wm[2]))/2:parseFloat(wm[1]);
-      const pm = detail.match(/(\d+)\s*(?:second|sec)\s*period/i);
-      if(pm) wavePd = parseInt(pm[1]);
+      // ── 2. NWS Marine Zone Forecast (waves) ─────────────────────────────────
+      // Marine zones give proper sea state data for Puget Sound
+      const marineUrl = "https://marine.weather.gov/MapClick.php?zoneid=" + loc.marineZone;
+      src.push({ label:"NWS Marine Forecast (" + loc.marineZone + ")", url:marineUrl, metric:"waves" });
 
+      let waveHt = null, wavePd = null, waveSource = "unavailable";
+      try {
+        const mzRes = await fetch(
+          "https://api.weather.gov/zones/forecast/" + loc.marineZone + "/forecast",
+          { headers:{"User-Agent":"LaunchWindow/3.0"} }
+        );
+        if (mzRes.ok) {
+          const mzData = await mzRes.json();
+          const mzPeriods = (mzData.properties && mzData.properties.periods) || [];
+          // Find the period that covers our target time, fall back to first
+          const mzTarget = mzPeriods.find(function(p) {
+            if (!p.startTime || !p.endTime) return false;
+            return new Date(p.startTime) <= target && new Date(p.endTime) > target;
+          }) || mzPeriods[0];
+          if (mzTarget) {
+            const parsed = parseWaves((mzTarget.detailedForecast || "") + " " + (mzTarget.name || ""));
+            waveHt = parsed.ht;
+            wavePd = parsed.pd;
+            waveSource = waveHt != null ? "marine-zone" : "marine-zone-no-data";
+          }
+        }
+      } catch(e) {
+        waveSource = "error";
+      }
+
+      // ── 3. NWS Active Alerts ─────────────────────────────────────────────────
       let scaAlerts = [];
       try {
         const alRes = await fetch(
-          "https://api.weather.gov/alerts/active?point="+loc.lat+","+loc.lon,
+          "https://api.weather.gov/alerts/active?point=" + loc.lat + "," + loc.lon,
           { headers:{"User-Agent":"LaunchWindow/3.0"} }
         );
-        if(alRes.ok) {
+        if (alRes.ok) {
           const al = await alRes.json();
           scaAlerts = (al.features||[]).filter(function(f){
             const ev=((f.properties&&f.properties.event)||"").toLowerCase();
             return ev.includes("small craft")||ev.includes("gale")||ev.includes("storm warning")||ev.includes("marine");
           }).map(function(f){ return f.properties.event; });
-          src.push({ label:"NWS Alerts", url:"https://alerts.weather.gov" });
         }
+        src.push({ label:"NWS Marine Alerts", url:"https://alerts.weather.gov/", metric:"advisories" });
       } catch(e) {}
 
+      // ── 4. NOAA Tides ────────────────────────────────────────────────────────
       const td = date.replace(/-/g,"");
+      const tidePageUrl = "https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id=" + loc.tideStation;
       let tides = [];
       try {
         const tRes = await fetch(
-          "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW&station="+
-          loc.tideStation+"&begin_date="+td+"&end_date="+td+
+          "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=predictions&datum=MLLW" +
+          "&station=" + loc.tideStation + "&begin_date=" + td + "&end_date=" + td +
           "&time_zone=lst_lnt&interval=hilo&units=english&application=LaunchWindow&format=json"
         );
         const tData = await tRes.json();
         tides = tData.predictions || [];
-        src.push({ label:"NOAA Tides", url:"https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id="+loc.tideStation });
+        src.push({ label:"NOAA Tide Predictions", url:tidePageUrl, metric:"tides" });
       } catch(e) {}
 
-      let currKt = null;
-      try {
-        const cRes = await fetch(
-          "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=currents_predictions&station="+
-          loc.currentStation+"&begin_date="+td+"&end_date="+td+
-          "&interval=h&units=english&time_zone=lst_lnt&application=LaunchWindow&format=json"
-        );
-        const cData = await cRes.json();
-        const preds = (cData.current_predictions&&cData.current_predictions.cp)||[];
-        const cT    = date+" "+String(hour).padStart(2,"0")+":00";
-        const cl    = preds.find(function(p){ return p.Time&&p.Time.startsWith(cT.slice(0,13)); })||preds[0];
-        if(cl&&cl.Velocity_Major) currKt = Math.abs(parseFloat(cl.Velocity_Major));
-        src.push({ label:"NOAA Currents", url:"https://tidesandcurrents.noaa.gov/currents/overview/"+loc.currentStation });
-      } catch(e) {}
+      // ── 5. NOAA Currents (only where a verified station ID exists) ───────────
+      // Only PUG1515 (Tacoma Narrows) is a confirmed valid Puget Sound current station.
+      // Other locations: direct user to NOAA map to check manually.
+      let currKt = null, currAvail = false;
+      const currMapUrl = "https://tidesandcurrents.noaa.gov/noaacurrents/";
+      if (loc.currentStation) {
+        try {
+          const cRes = await fetch(
+            "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=currents_predictions" +
+            "&station=" + loc.currentStation + "&begin_date=" + td + "&end_date=" + td +
+            "&interval=h&units=english&time_zone=lst_lnt&application=LaunchWindow&format=json"
+          );
+          const cData = await cRes.json();
+          const preds = (cData.current_predictions && cData.current_predictions.cp) || [];
+          const cT    = date + " " + String(hour).padStart(2,"0") + ":00";
+          const cl    = preds.find(function(p){ return p.Time && p.Time.startsWith(cT.slice(0,13)); }) || preds[0];
+          if (cl && cl.Velocity_Major) {
+            currKt = Math.abs(parseFloat(cl.Velocity_Major));
+            currAvail = true;
+          }
+          src.push({ label:"NOAA Currents (PUG1515 · Tacoma Narrows)", url:"https://tidesandcurrents.noaa.gov/noaacurrents/PUG1515", metric:"current" });
+        } catch(e) {}
+      } else {
+        // No reliable API current data — provide direct link to NOAA map
+        src.push({ label:"NOAA Currents Map (manual check)", url:currMapUrl, metric:"current" });
+      }
 
-      const _ws=wStatus(windKt),_gs=gStatus(gustKt),_wvs=wvStatus(waveHt,wavePd),_cs=cStatus(currKt);
-      const adv=scaAlerts.length>0?"red":"green", _vis=visStatus(fc);
-      setCond({ windKt,gustKt,windDir,fc,temp,tempU,waveHt,wavePd,scaAlerts,tides,currKt,
-        ws:_ws,gs:_gs,wvs:_wvs,cs:_cs,adv,vis:_vis,
-        verdict:overallVerdict([_ws,_gs,_wvs,adv,_vis,_cs]) });
+      const _ws=wStatus(windKt), _gs=gStatus(gustKt), _wvs=wvStatus(waveHt,wavePd);
+      const _cs=cStatus(currKt), adv=scaAlerts.length>0?"red":"green", _vis=visStatus(fc);
+
+      setCond({
+        windKt, gustKt, windDir, fc, temp, tempU,
+        waveHt, wavePd, waveSource,
+        scaAlerts, tides, currKt, currAvail,
+        ws:_ws, gs:_gs, wvs:_wvs, cs:_cs, adv, vis:_vis,
+        verdict:overallVerdict([_ws,_gs,_wvs,adv,_vis,_cs]),
+        // Source URLs for verify buttons
+        sourceWind:   nwsWindUrl,
+        sourceGusts:  nwsWindUrl,
+        sourceWaves:  marineUrl,
+        sourceCurrent:loc.currentStation ? "https://tidesandcurrents.noaa.gov/noaacurrents/" + loc.currentStation : currMapUrl,
+        sourceAlerts: "https://alerts.weather.gov/",
+        sourceVis:    nwsWindUrl,
+      });
       setSources(src);
     } catch(err) {
-      setCond(MOCK);
+      setCond(Object.assign({}, MOCK, {
+        sourceWind:   "https://forecast.weather.gov",
+        sourceGusts:  "https://forecast.weather.gov",
+        sourceWaves:  "https://marine.weather.gov/MapClick.php?zoneid=" + loc.marineZone,
+        sourceCurrent:"https://tidesandcurrents.noaa.gov/noaacurrents/",
+        sourceAlerts: "https://alerts.weather.gov/",
+        sourceVis:    "https://forecast.weather.gov",
+      }));
       setSources([
-        {label:"NWS Forecast",  url:"https://forecast.weather.gov"},
-        {label:"NOAA Tides",    url:"https://tidesandcurrents.noaa.gov"},
-        {label:"NOAA Currents", url:"https://tidesandcurrents.noaa.gov/currents.html"},
-        {label:"NWS Alerts",    url:"https://alerts.weather.gov"},
+        {label:"NWS Forecast",          url:"https://forecast.weather.gov",            metric:"wind/gusts/visibility"},
+        {label:"NWS Marine Forecast",   url:"https://marine.weather.gov",              metric:"waves"},
+        {label:"NOAA Tides",            url:"https://tidesandcurrents.noaa.gov",        metric:"tides"},
+        {label:"NOAA Currents Map",     url:"https://tidesandcurrents.noaa.gov/noaacurrents/", metric:"current"},
+        {label:"NWS Marine Alerts",     url:"https://alerts.weather.gov/",             metric:"advisories"},
       ]);
     }
     setLoading(false);
@@ -223,18 +304,19 @@ export default function LaunchWindow() {
 
   useEffect(function(){ check(); }, []);
 
-  const c  = cond;
-  const v  = (c&&c.verdict)||"unknown";
-  const vc = SC[v];
+  const c   = cond;
+  const v   = (c&&c.verdict)||"unknown";
+  const vc  = SC[v];
   const allManual   = manual.gear && manual.floatPlan && manual.shore;
   const allVerified = verified.wind && verified.gusts && verified.waves && verified.current && verified.advisories && verified.visibility;
   const allGo       = v==="green" && allManual && allVerified;
+  const totalChecked = Object.values(verified).filter(Boolean).length + Object.values(manual).filter(Boolean).length;
 
   function toggleVerified(key) {
-    setVerified(function(p){ return Object.assign({},p,{ [key]:!p[key] }); });
+    setVerified(function(p){ return Object.assign({},p,{[key]:!p[key]}); });
   }
   function toggleManual(key) {
-    setManual(function(p){ return Object.assign({},p,{ [key]:!p[key] }); });
+    setManual(function(p){ return Object.assign({},p,{[key]:!p[key]}); });
   }
 
   const selStyle = {
@@ -242,12 +324,6 @@ export default function LaunchWindow() {
     color:text, padding:"9px 12px", fontFamily:"'DM Sans',sans-serif",
     fontSize:"14px", cursor:"pointer", outline:"none", width:"100%", height:"42px", appearance:"none",
   };
-
-  // How many items verified / total
-  const autoCount     = Object.values(verified).filter(Boolean).length;
-  const manualCount   = Object.values(manual).filter(Boolean).length;
-  const totalChecked  = autoCount + manualCount;
-  const totalItems    = 9;
 
   return (
     <div style={{ fontFamily:"'DM Sans',sans-serif", background:bg, minHeight:"100vh", color:text }}>
@@ -287,8 +363,7 @@ export default function LaunchWindow() {
           </div>
           <div>
             <label style={{ display:"block", fontFamily:"'DM Mono',monospace", fontSize:"10px", color:textMid, letterSpacing:".1em", marginBottom:"6px" }}>DATE</label>
-            <input type="date" value={date}
-              onChange={function(e){ setDate(e.target.value); }}
+            <input type="date" value={date} onChange={function(e){ setDate(e.target.value); }}
               min={todayStr} max={new Date(Date.now()+7*864e5).toISOString().split("T")[0]}
               style={Object.assign({},selStyle,{colorScheme:dark?"dark":"light"})} />
           </div>
@@ -361,20 +436,16 @@ export default function LaunchWindow() {
                     </React.Fragment>
                 }
               </div>
-              {/* Progress pill */}
               {c&&(
                 <div style={{ textAlign:"center", padding:"10px 16px", background:dark?"#1a2b4a":WHITE,
                   borderRadius:"8px", border:"1px solid "+border, flexShrink:0, minWidth:"90px" }}>
-                  <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"9px", color:textMid, letterSpacing:".1em", marginBottom:"6px" }}>
-                    CHECKLIST
-                  </div>
+                  <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"9px", color:textMid, letterSpacing:".1em", marginBottom:"6px" }}>CHECKLIST</div>
                   <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"22px", fontWeight:500, color:text, lineHeight:1 }}>
-                    {totalChecked}<span style={{ fontSize:"13px", color:textMid, fontWeight:300 }}>/{totalItems}</span>
+                    {totalChecked}<span style={{ fontSize:"13px", color:textMid, fontWeight:300 }}>/9</span>
                   </div>
-                  {/* Progress bar */}
                   <div style={{ marginTop:"6px", height:"3px", background:border, borderRadius:"2px", overflow:"hidden" }}>
-                    <div style={{ height:"100%", width:(totalChecked/totalItems*100)+"%",
-                      background: totalChecked===totalItems?SC.green:totalChecked>5?SC.yellow:SC.orange,
+                    <div style={{ height:"100%", width:(totalChecked/9*100)+"%",
+                      background:totalChecked===9?SC.green:totalChecked>5?SC.yellow:SC.orange,
                       borderRadius:"2px", transition:"width .3s" }} />
                   </div>
                 </div>
@@ -391,26 +462,36 @@ export default function LaunchWindow() {
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
                 label="Wind" value={c.windKt!=null?c.windKt.toFixed(1):"—"} unit="kt"
                 sub={c.windDir?"from "+c.windDir:null} status={c.ws}
+                source="NWS hourly forecast (JSON field — structured data)"
                 thresh="0–8: Ideal · 8–12: OK · 12–15: Marginal · 15+: No Go" />
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
                 label="Gusts" value={c.gustKt!=null?c.gustKt.toFixed(1):"—"} unit="kt"
                 sub={c.gustKt==null?"none reported":null} status={c.gs}
+                source="NWS hourly forecast (JSON field — structured data)"
                 thresh="≤12: OK · ≤15: Caution · 15+: No Go" />
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
                 label="Waves" value={c.waveHt!=null?c.waveHt.toFixed(1):"—"} unit="ft"
-                sub={c.wavePd?c.wavePd+"s period":c.waveHt==null?"check manually":null} status={c.wvs}
+                sub={c.wavePd?c.wavePd+"s period":c.waveHt==null?"check marine forecast":null}
+                status={c.wvs}
+                source={"NWS Marine Zone " + loc.marineZone + " forecast text — verify manually"}
                 thresh="≤1 ft: Easy · 1–2 ft @ 6s+: OK · 3 ft+: No Go" />
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
                 label="Current" value={c.currKt!=null?c.currKt.toFixed(2):"—"} unit="kt"
-                sub={c.currKt==null?"see NOAA Currents":null} status={c.cs}
+                sub={!c.currAvail?"no API station nearby — check NOAA map":null}
+                status={c.cs}
+                source={loc.currentStation
+                  ? "NOAA CO-OPS station " + loc.currentStation + " (Tacoma Narrows)"
+                  : "No verified current station near this location — verify manually on NOAA Currents map"}
                 thresh="<1 kt: Fine · 1–2 kt: Plan carefully · 2+: No Go" />
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
                 label="Advisories" value={c.scaAlerts&&c.scaAlerts.length?"Active":"Clear"} unit=""
                 sub={(c.scaAlerts&&c.scaAlerts[0])||"No marine advisories"} status={c.adv}
+                source="NWS active alerts API for this lat/lon"
                 thresh="Any Small Craft / Gale / Storm Warning = No Go" />
               <Metric dark={dark} bg={bgCard} border={border} text={text} textMid={textMid}
                 label="Visibility" value={c.vis==="green"?"Good":c.vis==="yellow"?"Limited":"Poor"} unit=""
                 sub={c.fc||null} status={c.vis}
+                source="NWS hourly forecast short description — inferred from text"
                 thresh=">1 mile: OK · Dense fog + shipping: No Go" />
             </div>
           </div>
@@ -424,8 +505,7 @@ export default function LaunchWindow() {
               {c.tides.map(function(t,i){
                 return (
                   <div key={i} style={{ background:bgCard, border:"1px solid "+border, borderRadius:"8px", padding:"14px 18px", minWidth:"110px" }}>
-                    <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px",
-                      color:t.type==="H"?SC.green:textMid, letterSpacing:".1em", marginBottom:"6px" }}>
+                    <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:t.type==="H"?SC.green:textMid, letterSpacing:".1em", marginBottom:"6px" }}>
                       {t.type==="H"?"HIGH":"LOW"}
                     </div>
                     <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"24px", fontWeight:500, color:text, lineHeight:1 }}>
@@ -445,52 +525,50 @@ export default function LaunchWindow() {
         {c&&(
           <div className="a2" style={{ marginBottom:"28px" }}>
             <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:"12px" }}>
-              <SectionLabel text="Pre-Launch Checklist" textMid={textMid} />
-              {/* Reset verifications button */}
+              <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:textMid, letterSpacing:".12em" }}>
+                PRE-LAUNCH CHECKLIST
+              </div>
               {allVerified&&(
                 <button onClick={resetVerified}
                   style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:textMid,
-                    background:"none", border:"none", cursor:"pointer", letterSpacing:".06em", marginTop:"-10px" }}>
+                    background:"none", border:"none", cursor:"pointer", letterSpacing:".06em" }}>
                   Reset verifications
                 </button>
               )}
             </div>
 
             <div style={{ background:bgCard, border:"1px solid "+border, borderRadius:"8px", overflow:"hidden" }}>
-
-              {/* AUTO ROWS — each has a Verify button */}
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={c.ws} verifyKey="wind" verified={verified.wind} onVerify={toggleVerified}
                 label="Wind ≤ 12 kt"
                 detail={c.windKt!=null?c.windKt.toFixed(1)+" kt from "+c.windDir:"data unavailable"}
-                sourceUrl="https://forecast.weather.gov" />
+                sourceUrl={c.sourceWind} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={c.gs} verifyKey="gusts" verified={verified.gusts} onVerify={toggleVerified}
                 label="Gusts ≤ 15 kt"
                 detail={c.gustKt!=null?c.gustKt.toFixed(1)+" kt":"none reported"}
-                sourceUrl="https://forecast.weather.gov" />
+                sourceUrl={c.sourceGusts} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={c.wvs} verifyKey="waves" verified={verified.waves} onVerify={toggleVerified}
                 label="Waves ≤ 2 ft, 6s+ period"
-                detail={c.waveHt!=null?c.waveHt.toFixed(1)+" ft"+(c.wavePd?" @ "+c.wavePd+"s":""):"check manually"}
-                sourceUrl={"https://tidesandcurrents.noaa.gov/noaatidepredictions.html?id="+loc.tideStation} />
+                detail={c.waveHt!=null?c.waveHt.toFixed(1)+" ft"+(c.wavePd?" @ "+c.wavePd+"s":""):"check NWS marine forecast — tap ↗ Source"}
+                sourceUrl={c.sourceWaves} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={c.cs} verifyKey="current" verified={verified.current} onVerify={toggleVerified}
                 label="Current ≤ 1 kt"
-                detail={c.currKt!=null?c.currKt.toFixed(2)+" kt":"check tidesandcurrents.noaa.gov"}
-                sourceUrl={"https://tidesandcurrents.noaa.gov/currents/overview/"+loc.currentStation} />
+                detail={c.currAvail?c.currKt.toFixed(2)+" kt (station "+loc.currentStation+")":"no API station near here — verify on NOAA map ↗"}
+                sourceUrl={c.sourceCurrent} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={c.adv} verifyKey="advisories" verified={verified.advisories} onVerify={toggleVerified}
                 label="No small craft advisory"
                 detail={c.scaAlerts&&c.scaAlerts.length?c.scaAlerts.join(", "):"None active"}
-                sourceUrl="https://alerts.weather.gov" />
+                sourceUrl={c.sourceAlerts} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid}
                 status={c.vis} verifyKey="visibility" verified={verified.visibility} onVerify={toggleVerified}
                 label="Visibility good, no fog"
                 detail={c.fc||"—"}
-                sourceUrl="https://forecast.weather.gov" />
+                sourceUrl={c.sourceVis} />
 
-              {/* Divider between auto and manual */}
               <div style={{ padding:"8px 16px", background:dark?"#1a2b4a30":"#f0f4f8",
                 borderTop:"1px solid "+border, borderBottom:"1px solid "+border }}>
                 <span style={{ fontFamily:"'DM Mono',monospace", fontSize:"9px", color:textMid, letterSpacing:".12em" }}>
@@ -499,23 +577,19 @@ export default function LaunchWindow() {
               </div>
 
               <CheckRow dark={dark} border={border} text={text} textMid={textMid} manual
-                status={manual.gear?"green":"unknown"}
-                label="Dry suit on"
+                status={manual.gear?"green":"unknown"} label="Dry suit on"
                 detail="Cold shock < 1 min. Swimming failure < 10 min. Dress for immersion."
                 checked={manual.gear} onToggle={function(){ toggleManual("gear"); }} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid} manual
-                status={manual.floatPlan?"green":"unknown"}
-                label="Float plan shared"
+                status={manual.floatPlan?"green":"unknown"} label="Float plan shared"
                 detail="Someone ashore knows where you're going and when you'll be back."
                 checked={manual.floatPlan} onToggle={function(){ toggleManual("floatPlan"); }} />
               <CheckRow dark={dark} border={border} text={text} textMid={textMid} manual last
-                status={manual.shore?"green":"unknown"}
-                label="Route stays close to shore"
+                status={manual.shore?"green":"unknown"} label="Route stays close to shore"
                 detail="Narrows can run 3+ kt at exchange — plan accordingly."
                 checked={manual.shore} onToggle={function(){ toggleManual("shore"); }} />
             </div>
 
-            {/* Summary */}
             <div style={{ marginTop:"10px", padding:"14px 18px",
               background:allGo?SC.green+"18":v==="red"?SC.red+"12":bgCard,
               border:"1px solid "+(allGo?SC.green+"44":v==="red"?SC.red+"44":border),
@@ -523,28 +597,28 @@ export default function LaunchWindow() {
               <div style={{ width:"8px", height:"8px", borderRadius:"50%", flexShrink:0,
                 background:allGo?SC.green:v==="red"||v==="orange"?SC.red:SC.yellow }} />
               <div style={{ fontSize:"14px", color:text }}>
-                {allGo
-                  ? "All checks clear. Conditions look good — paddle safe."
-                  : v==="red"||v==="orange"
-                  ? "Conditions outside safe limits. Strongly reconsider launching today."
-                  : !allVerified
-                  ? "Verify the NOAA data above before heading out."
-                  : !allManual
-                  ? "Complete the manual checks above before heading out."
-                  : "Marginal conditions — short trip, stay close to shore."}
+                {allGo?"All checks clear. Conditions look good — paddle safe."
+                  :v==="red"||v==="orange"?"Conditions outside safe limits. Strongly reconsider launching today."
+                  :!allVerified?"Open each ↗ Source link and verify the data before heading out."
+                  :!allManual?"Complete the manual checks above before heading out."
+                  :"Marginal conditions — short trip, stay close to shore."}
               </div>
             </div>
           </div>
         )}
 
-        {/* SOURCES */}
+        {/* SOURCES — grouped by metric */}
         {sources.length>0&&(
           <div className="a3" style={{ borderTop:"1px solid "+border, paddingTop:"20px", marginBottom:"24px" }}>
             <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:textMid, letterSpacing:".1em", marginBottom:"10px" }}>
               DATA SOURCES
             </div>
             <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-              {sources.concat([{label:"NDBC NW Buoys",url:"https://www.ndbc.noaa.gov/maps/northwest_hist.shtml"}]).map(function(s,i){
+              {sources.concat([
+                {label:"NDBC NW Buoys",           url:"https://www.ndbc.noaa.gov/maps/northwest_hist.shtml",             metric:"buoys"},
+                {label:"NOAA Currents Map",        url:"https://tidesandcurrents.noaa.gov/noaacurrents/",                 metric:"current"},
+                {label:"Puget Sound Marine Wx",    url:"https://marine.weather.gov/MapClick.php?zoneid="+loc.marineZone,  metric:"waves"},
+              ]).map(function(s,i){
                 return (
                   <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
                     style={{ fontFamily:"'DM Mono',monospace", fontSize:"11px", color:dark?"#6a9cc0":NAVY,
@@ -560,14 +634,16 @@ export default function LaunchWindow() {
 
         {/* DISCLAIMER */}
         <div style={{ padding:"16px 0", borderTop:"1px solid "+border }}>
-          <p style={{ fontSize:"12px", color:textMid, lineHeight:"1.7", fontWeight:300 }}>
-            Informational use only. This tool aggregates public NOAA/NWS data and does not replace on-the-water judgment or local knowledge. Puget Sound water is 45–55°F year-round — cold shock in under 1 minute, swimming failure within ~10 minutes even on warm days. Always dress for immersion. Assume you will flip.
+          <p style={{ fontFamily:"'DM Sans',sans-serif", fontSize:"12px", color:textMid, lineHeight:"1.7", fontWeight:300 }}>
+            Informational use only. This tool aggregates public NOAA/NWS data and does not replace on-the-water judgment or local knowledge. Wind and gusts come from NWS structured forecast data. Wave height is parsed from NWS Marine Zone ({loc.marineZone}) forecast text — always verify manually. Current predictions are only available via API at Tacoma Narrows (PUG1515); all other locations should be checked on the NOAA Currents map. Puget Sound water is 45–55°F year-round — cold shock in under 1 minute. Always dress for immersion. Assume you will flip.
           </p>
         </div>
       </div>
     </div>
   );
 }
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 function SectionLabel({ text, textMid }) {
   return (
@@ -577,7 +653,7 @@ function SectionLabel({ text, textMid }) {
   );
 }
 
-function Metric({ dark, bg, border, text, textMid, label, value, unit, sub, status, thresh }) {
+function Metric({ dark, bg, border, text, textMid, label, value, unit, sub, status, thresh, source }) {
   const [open, setOpen] = useState(false);
   const sc = SC[status]||SC.unknown;
   return (
@@ -596,10 +672,10 @@ function Metric({ dark, bg, border, text, textMid, label, value, unit, sub, stat
         {value}<span style={{ fontSize:"13px", color:textMid, fontWeight:300, marginLeft:"3px" }}>{unit}</span>
       </div>
       {sub&&<div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:textMid }}>{sub}</div>}
-      {open&&thresh&&(
-        <div style={{ marginTop:"10px", paddingTop:"10px", borderTop:"1px solid "+border,
-          fontFamily:"'DM Sans',sans-serif", fontSize:"11px", color:textMid, lineHeight:"1.6" }}>
-          {thresh}
+      {open&&(
+        <div style={{ marginTop:"10px", paddingTop:"10px", borderTop:"1px solid "+border }}>
+          {thresh&&<div style={{ fontFamily:"'DM Sans',sans-serif", fontSize:"11px", color:textMid, lineHeight:"1.6", marginBottom:"6px" }}>{thresh}</div>}
+          {source&&<div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:textMid, opacity:.7, lineHeight:"1.5" }}>Source: {source}</div>}
         </div>
       )}
     </div>
@@ -607,25 +683,18 @@ function Metric({ dark, bg, border, text, textMid, label, value, unit, sub, stat
 }
 
 function CheckRow({ dark, border, text, textMid, status, label, detail, manual, checked, onToggle, last, verifyKey, verified, onVerify, sourceUrl }) {
-  const sc = SC[status]||SC.unknown;
-  // For auto rows: show verified state instead of raw status if verified
   const effectiveStatus = (!manual && verified) ? "green" : status;
-  const esc = SC[effectiveStatus]||SC.unknown;
-
+  const sc = SC[effectiveStatus]||SC.unknown;
   return (
     <div style={{ display:"flex", alignItems:"center", gap:"14px", padding:"12px 16px",
       borderBottom:last?"none":"1px solid "+border,
       background:(status==="red"||status==="orange")?(dark?"#1e1008":"#fffaf9"):"transparent" }}>
-
-      {/* Status circle */}
-      <div style={{ width:"20px", height:"20px", borderRadius:"50%", border:"1.5px solid "+esc,
-        background:effectiveStatus==="unknown"?"transparent":esc+"20", flexShrink:0,
+      <div style={{ width:"20px", height:"20px", borderRadius:"50%", border:"1.5px solid "+sc,
+        background:effectiveStatus==="unknown"?"transparent":sc+"20", flexShrink:0,
         display:"flex", alignItems:"center", justifyContent:"center",
-        fontSize:"11px", color:esc, fontFamily:"'DM Sans',sans-serif", fontWeight:600 }}>
+        fontSize:"11px", color:sc, fontFamily:"'DM Sans',sans-serif", fontWeight:600 }}>
         {effectiveStatus==="green"?"✓":effectiveStatus==="red"||effectiveStatus==="orange"?"✕":effectiveStatus==="yellow"?"!":"·"}
       </div>
-
-      {/* Label + detail */}
       <div style={{ flex:1 }}>
         <div style={{ fontSize:"14px", fontWeight:500, color:text, display:"flex", alignItems:"center", gap:"8px" }}>
           {label}
@@ -642,34 +711,27 @@ function CheckRow({ dark, border, text, textMid, status, label, detail, manual, 
           </div>
         )}
       </div>
-
-      {/* AUTO ROW: source link + verify button */}
       {!manual&&(
         <div style={{ display:"flex", alignItems:"center", gap:"6px", flexShrink:0 }}>
           {sourceUrl&&(
             <a href={sourceUrl} target="_blank" rel="noopener noreferrer"
-              title="Open source to verify"
               style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:textMid,
                 textDecoration:"none", padding:"4px 8px", border:"1px solid "+border,
                 borderRadius:"4px", lineHeight:1, whiteSpace:"nowrap" }}>
               ↗ Source
             </a>
           )}
-          <button onClick={function(){ onVerify(verifyKey); }}
-            style={{
-              background: verified ? SC.green : "transparent",
-              border: "1px solid " + (verified ? SC.green : border),
-              borderRadius:"4px", color: verified ? WHITE : textMid,
-              padding:"4px 10px", fontFamily:"'DM Mono',monospace",
-              fontSize:"10px", cursor:"pointer", whiteSpace:"nowrap", lineHeight:1,
-              letterSpacing:".04em",
-            }}>
-            {verified ? "✓ Verified" : "Verify"}
+          <button onClick={function(){ onVerify(verifyKey); }} style={{
+            background:verified?SC.green:"transparent",
+            border:"1px solid "+(verified?SC.green:border),
+            borderRadius:"4px", color:verified?WHITE:textMid,
+            padding:"4px 10px", fontFamily:"'DM Mono',monospace",
+            fontSize:"10px", cursor:"pointer", whiteSpace:"nowrap", lineHeight:1, letterSpacing:".04em",
+          }}>
+            {verified?"✓ Verified":"Verify"}
           </button>
         </div>
       )}
-
-      {/* MANUAL ROW: confirm button */}
       {manual&&(
         <button onClick={onToggle} style={{
           background:checked?NAVY:"transparent", border:"1px solid "+(checked?NAVY:border),
