@@ -153,18 +153,41 @@ const SC = { green:"#00875a", yellow:"#c48a00", orange:"#c45a00", red:"#c8322a",
 const SL = { green:"Go", yellow:"Caution", orange:"Marginal", red:"No Go", unknown:"—" };
 const SALMON_COLOR = "#c46a20";
 
-function KayakLogo({ size, color }) {
+function GabuchoFish({ size }) {
+  // Colors sampled directly from the gabucho-fish-azul.png logo
+  const BLUE   = "#1a4b8d";
+  const CREAM  = "#f0e0c0";
+  const SPOT   = "#537092";
   return (
-    <svg width={size} height={size} viewBox="0 0 80 80" fill="none">
-      <path d="M10 56 Q25 48 40 48 Q55 48 70 56 Q55 62 40 62 Q25 62 10 56Z" fill={color}/>
-      <rect x="33" y="40" width="14" height="12" rx="3" fill={color}/>
-      <circle cx="40" cy="34" r="6" fill={color}/>
-      <ellipse cx="40" cy="29" rx="11" ry="3" fill={color}/>
-      <rect x="35" y="22" width="10" height="8" rx="2" fill={color}/>
-      <line x1="12" y1="50" x2="68" y2="50" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>
-      <ellipse cx="12" cy="50" rx="4" ry="7" fill={color} transform="rotate(-15 12 50)"/>
-      <ellipse cx="68" cy="50" rx="4" ry="7" fill={color} transform="rotate(15 68 50)"/>
-      <path d="M18 64 Q28 61 40 64 Q52 67 62 64" stroke={color} strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5"/>
+    <svg width={size} height={Math.round(size*0.69)} viewBox="0 0 100 69" fill="none">
+      {/* Main body — rounded, slightly wider than tall */}
+      <ellipse cx="44" cy="36" rx="34" ry="28" fill={BLUE}/>
+      {/* Dorsal fin bump on top */}
+      <ellipse cx="44" cy="8" rx="9" ry="8" fill={BLUE}/>
+      {/* Tail — forked, pointing right */}
+      <path d="M76 36 L96 20 L88 36 L96 52 Z" fill={BLUE}/>
+      {/* Pectoral fin bottom */}
+      <ellipse cx="42" cy="62" rx="5" ry="4" fill={BLUE}/>
+      {/* Water drop beneath body */}
+      <ellipse cx="44" cy="65" rx="3" ry="2.5" fill={BLUE}/>
+      {/* Lateral line — cream vertical curve dividing head from body */}
+      <path d="M42 12 Q40 36 42 62" stroke={CREAM} strokeWidth="2.2" strokeLinecap="round" fill="none"/>
+      {/* Eye outer ring */}
+      <circle cx="26" cy="34" r="9" fill={CREAM}/>
+      {/* Eye inner dark */}
+      <circle cx="26" cy="34" r="5.5" fill={BLUE}/>
+      {/* Eye pupil highlight */}
+      <circle cx="24" cy="32" r="2" fill={CREAM}/>
+      {/* Scale spots — upper cluster */}
+      <circle cx="58" cy="24" r="3" fill={SPOT}/>
+      <circle cx="67" cy="22" r="3" fill={SPOT}/>
+      <circle cx="72" cy="28" r="3" fill={SPOT}/>
+      {/* Scale spots — lower cluster */}
+      <circle cx="60" cy="37" r="3" fill={SPOT}/>
+      <circle cx="68" cy="38" r="3" fill={SPOT}/>
+      {/* Scale spots — bottom */}
+      <circle cx="58" cy="50" r="2.5" fill={SPOT}/>
+      <circle cx="66" cy="52" r="2.2" fill={SPOT}/>
     </svg>
   );
 }
@@ -436,19 +459,23 @@ export default function LaunchWindow() {
     <div style={{ fontFamily:"'DM Sans',sans-serif", background:bg, minHeight:"100vh", color:text }}>
 
       {/* NAV */}
-      <div style={{ background:NAVY, padding:"0 28px" }}>
+      <div style={{ background:"#122d5e", padding:"0 28px" }}>
         <div style={{ maxWidth:"860px", margin:"0 auto", height:"60px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
           <div style={{ display:"flex", alignItems:"center", gap:"12px" }}>
-            <KayakLogo size={36} color={WHITE} />
+            <GabuchoFish size={42} />
             <div>
-              <div style={{ fontWeight:600, fontSize:"15px", color:WHITE, letterSpacing:".02em" }}>Launch Window</div>
-              <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:"#7a9cc0", letterSpacing:".08em", marginTop:"-1px" }}>
-                PUGET SOUND · HOBIE OUTBACK
+              <div style={{ fontWeight:600, fontSize:"15px", color:WHITE, letterSpacing:".02em" }}>Launch Window — Puget Sound</div>
+              <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:"#7aaad4", letterSpacing:".06em", marginTop:"2px" }}>
+                A project by{" "}
+                <a href="https://gorrrbb.format.com/" target="_blank" rel="noopener noreferrer"
+                  style={{ color:"#7aaad4", textDecoration:"underline", textUnderlineOffset:"2px" }}>
+                  Gorrrbb
+                </a>
               </div>
             </div>
           </div>
           <button onClick={function(){ setDark(function(d){ return !d; }); }}
-            style={{ background:"none", border:"1px solid #2e4268", borderRadius:"20px",
+            style={{ background:"none", border:"1px solid #1e3d7a", borderRadius:"20px",
               padding:"5px 14px", color:"#7a9cc0", fontSize:"12px", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
             {dark?"Light":"Dark"}
           </button>
