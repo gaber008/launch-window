@@ -22,7 +22,7 @@ const LOCATIONS = [
 ];
 
 
-const todayStr  = new Date().toISOString().split("T")[0];
+const _d = new Date(); const todayStr = _d.getFullYear()+"-"+String(_d.getMonth()+1).padStart(2,"0")+"-"+String(_d.getDate()).padStart(2,"0");
 
 const MOCK = {
   windMph:9.0, gustMph:20.0, windDir:"S", fc:"Rain", temp:52, tempU:"F", waterTempF:49.3,
@@ -467,9 +467,9 @@ export default function LaunchWindow() {
               <div style={{ fontWeight:600, fontSize:"15px", color:WHITE, letterSpacing:".02em" }}>Launch Window — Puget Sound</div>
               <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:"#7aaad4", letterSpacing:".06em", marginTop:"2px" }}>
                 A project by{" "}
-                <a href="https://www.instagram.com/gorrrbb/" target="_blank" rel="noopener noreferrer"
+                <a href="https://gorrrbb.format.com/" target="_blank" rel="noopener noreferrer"
                   style={{ color:"#7aaad4", textDecoration:"underline", textUnderlineOffset:"2px" }}>
-                  Gorrrbb
+                  Gorb
                 </a>
               </div>
             </div>
@@ -498,7 +498,7 @@ export default function LaunchWindow() {
           <div style={{ flex:"1 1 120px" }}>
             <label style={{ display:"block", fontFamily:"'DM Mono',monospace", fontSize:"10px", color:textMid, letterSpacing:".1em", marginBottom:"6px" }}>DATE</label>
             <input type="date" value={date} onChange={function(e){ setDate(e.target.value); }}
-              min={todayStr} max={new Date(Date.now()+7*864e5).toISOString().split("T")[0]}
+              min={todayStr} max={(_d2=>_d2.getFullYear()+"-"+String(_d2.getMonth()+1).padStart(2,"0")+"-"+String(_d2.getDate()).padStart(2,"0"))(new Date(Date.now()+7*864e5))}
               style={Object.assign({},selStyle,{colorScheme:dark?"dark":"light"})} />
           </div>
           <div style={{ flex:"1 1 120px" }}>
