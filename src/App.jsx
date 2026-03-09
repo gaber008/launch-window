@@ -467,7 +467,7 @@ export default function LaunchWindow() {
               <div style={{ fontWeight:600, fontSize:"15px", color:WHITE, letterSpacing:".02em" }}>Launch Window — Puget Sound</div>
               <div style={{ fontFamily:"'DM Mono',monospace", fontSize:"10px", color:"#7aaad4", letterSpacing:".06em", marginTop:"2px" }}>
                 A project by{" "}
-                <a href="https://gorrrbb.format.com/" target="_blank" rel="noopener noreferrer"
+                <a href="https://www.instagram.com/gorrbb" target="_blank" rel="noopener noreferrer"
                   style={{ color:"#7aaad4", textDecoration:"underline", textUnderlineOffset:"2px" }}>
                   Gorb
                 </a>
